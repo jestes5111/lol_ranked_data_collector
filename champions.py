@@ -19,10 +19,10 @@ def main():
     puuid = summoner['puuid']
     match_ids = get_last_20_match_ids(lol_watcher, region, puuid)
 
-    game_data = collect_data(lol_watcher, region, match_ids, puuid)
-    game_data = filter_and_decode_data(game_data)
+    data = collect_data(lol_watcher, region, match_ids, puuid)
+    data = filter_and_decode_data(data)
 
-    game_data.to_csv('test.csv', index=False)
+    data.to_csv('test.csv', index=False)
 
     # TODO: expand 'perks' column to shards (offense, flex, defense) and
     #       runes (listed as 'primaryStyle' and 'subStyle' with 'selections')
@@ -115,20 +115,22 @@ def collect_data(
         watcher: The `LolWatcher` object to access Riot's API.
         region: The region to search (e.g., 'NA1').
         match_id: A list `matchId`s, used to get data from individual matches.
+        puuid: The globally unique identifier of a given player.
 
     Returns:
         A `DataFrame` containing all of their unfiltered data.
     """
-    game_data = pd.DataFrame()
+    data = pd.DataFrame()
 
     for match_id in match_ids:
         match = get_match_from_id(watcher, region, match_id)
         player_index = get_player_index(puuid, match)
         player = get_player_from_index(match, player_index)
-        player_data = pd.DataFrame([player])
-        game_data = pd.concat([game_data, player_data], ignore_index=True)
+        player_data = pd.json_normalize(player)
+        data = pd.concat([data, player_data], ignore_index=True)
+        data = get_runes(data)
 
-    return game_data
+    return data
 
 
 def filter_and_decode_data(data: pd.DataFrame) -> pd.DataFrame:
@@ -190,6 +192,25 @@ def get_player_from_index(match: dict, index: int) -> dict:
     return match['info']['participants'][index]
 
 
+def get_runes(data: pd.DataFrame) -> pd.DataFrame:
+    """Gets the runes used by the player in an individual match.
+    
+    Args:
+        data: 
+    """
+    runes_list = []
+    perks = pd.json_normalize(data['perks.styles'])
+    for i in perks:
+        for j in perks[i][0]['selections']:
+            runes_list.append(lit.get_name(j['perk'], object_type='rune'))
+
+    columns = ['keystone', 'primary1', 'primary2', 'primary3', 
+               'secondary1', 'secondary2']
+
+    runes = pd.DataFrame(runes_list, index=columns).transpose()
+    return pd.concat([data, runes], axis=1, join='outer')
+
+
 def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
     """Remove unnecessary fields from the acquired data.
 
@@ -200,13 +221,14 @@ def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
         The data with unnecessary information removed.    
     """
     data = data.drop(columns=[
-        'challenges', 'unrealKills', 'totalUnitsHealed', 'summonerId',
+        'perks.styles', 'unrealKills', 'totalUnitsHealed', 'summonerId',
         'summonerLevel', 'role', 'puuid', 'profileIcon',
         'largestCriticalStrike', 'lane', 'itemsPurchased', 'individualPosition',
         'goldSpent', 'eligibleForProgression', 'championTransform', 'championId'
     ])
 
-    for regex in ['.*Pings*', '.*riot*', '.*nexus*', '.*gameEnded*']:
+    regexes = ['.*challenge*', '.*Ping*', '.*riot*', '.*nexus*', '.*gameEnded*']
+    for regex in regexes:
         filter_data(data, regex)
 
     return data
