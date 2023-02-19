@@ -127,8 +127,9 @@ def collect_data(
         player_index = get_player_index(puuid, match)
         player = get_player_from_index(match, player_index)
         player_data = pd.json_normalize(player)
+        #player_data = pd.DataFrame([player])
         data = pd.concat([data, player_data], ignore_index=True)
-        data = get_runes(data)
+        #data = get_runes(data)
 
     return data
 
@@ -142,6 +143,7 @@ def filter_and_decode_data(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
+    pd.json_normalize(data['perks.styles'])
     data = remove_unnecessary_info(data)
     data = decode_items(data)
     data = decode_summoner_spells(data)
@@ -198,17 +200,11 @@ def get_runes(data: pd.DataFrame) -> pd.DataFrame:
     Args:
         data: 
     """
-    runes_list = []
     perks = pd.json_normalize(data['perks.styles'])
-    for i in perks:
-        for j in perks[i][0]['selections']:
-            runes_list.append(lit.get_name(j['perk'], object_type='rune'))
+    primary = pd.json_normalize(perks[0])['selections']
+    # TODO: go from here
 
-    columns = ['keystone', 'primary1', 'primary2', 'primary3', 
-               'secondary1', 'secondary2']
-
-    runes = pd.DataFrame(runes_list, index=columns).transpose()
-    return pd.concat([data, runes], axis=1, join='outer')
+    secondary = pd.json_normalize(perks[1])['selections']
 
 
 def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
@@ -221,8 +217,8 @@ def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
         The data with unnecessary information removed.    
     """
     data = data.drop(columns=[
-        'perks.styles', 'unrealKills', 'totalUnitsHealed', 'summonerId',
-        'summonerLevel', 'role', 'puuid', 'profileIcon',
+        'unrealKills', 'totalUnitsHealed', 'summonerId',
+        'summonerLevel', 'summonerName', 'role', 'puuid', 'profileIcon',
         'largestCriticalStrike', 'lane', 'itemsPurchased', 'individualPosition',
         'goldSpent', 'eligibleForProgression', 'championTransform', 'championId'
     ])
