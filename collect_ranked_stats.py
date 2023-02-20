@@ -282,6 +282,7 @@ def get_runes(data: pd.DataFrame) -> pd.DataFrame:
     primary3.name = 'runePrimary3'
     secondary1.name = 'runeSecondary1'
     secondary2.name = 'runeSecondary2'
+
     rune_list = [keystone, primary1, primary2, primary3, secondary1, secondary2]
     runes = pd.concat(rune_list, axis=1)
     data = pd.concat([data, runes], axis=1, join='outer')
@@ -306,22 +307,8 @@ def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
 
     regexes = ['.*challenge*', '.*Ping*', '.*riot*', '.*nexus*', '.*gameEnded*']
     for regex in regexes:
-        filter_data(data, regex)
+        data = data.drop(data.filter(regex=regex).columns, axis=1)
 
-    return data
-
-
-def filter_data(data: pd.DataFrame, regex: str) -> pd.DataFrame:
-    """Remove a column from the given `DataFrame` using the given `regex`.
-
-    Args:
-        data: The `DataFrame` to remove one or more columns from.
-        regex: The regular expression to search for.
-
-    Returns:
-        The given `DataFrame` with the desired column(s) removed.
-    """
-    data = data.drop(list(data.filter(regex=regex)), axis=1)
     return data
 
 
