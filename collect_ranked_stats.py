@@ -274,6 +274,7 @@ def get_runes(data: pd.DataFrame) -> pd.DataFrame:
         for j in tree.columns:
             rune = pd.json_normalize(tree[j])['perk']
             runes = pd.concat([runes, rune], axis='columns')
+
     runes.columns =  [
         'runeKeystone', 'runePrimary1', 'runePrimary2', 'runePrimary3', 
         'runeSecondary1', 'runeSecondary2'
@@ -291,17 +292,17 @@ def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The data with unnecessary information removed.    
     """
-    data = data.drop(columns=[
+    columns = [
         'perks.styles', 'unrealKills', 'totalUnitsHealed', 'summonerId',
         'summonerLevel', 'summonerName', 'role', 'puuid', 'profileIcon',
         'largestCriticalStrike', 'lane', 'itemsPurchased', 'individualPosition',
         'goldSpent', 'eligibleForProgression', 'championTransform', 'championId'
-    ])
+    ]
+    data = data.drop(columns=columns)
 
     regexes = ['.*challenge*', '.*Ping*', '.*riot*', '.*nexus*', '.*gameEnded*']
     for regex in regexes:
         data = data.drop(data.filter(regex=regex).columns, axis='columns')
-
     return data
 
 
@@ -314,8 +315,8 @@ def decode_items(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
-    items = data.filter(regex=r'item\d')
-    data[items.columns] = data[items.columns].applymap(
+    items = data.filter(regex=r'item\d').columns
+    data[items] = data[items].applymap(
         lambda item: lit.get_name(item, object_type='item')
     )
     return data
@@ -330,8 +331,8 @@ def decode_summoner_spells(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
-    summoner_spells = data.filter(regex=r'summoner([1-2])Id')
-    data[summoner_spells.columns] = data[summoner_spells.columns].applymap(
+    summoner_spells = data.filter(regex=r'summoner([1-2])Id').columns
+    data[summoner_spells] = data[summoner_spells].applymap(
         lambda spell: lit.get_name(spell, object_type='summoner_spell')
     )
     return data
@@ -346,8 +347,8 @@ def decode_runes(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
-    runes = data.filter(regex=r'rune((Keystone)|(Primary)|(Secondary))')
-    data[runes.columns] = data[runes.columns].applymap(
+    runes = data.filter(regex=r'rune(Keystone|Primary|Secondary)').columns
+    data[runes] = data[runes].applymap(
         lambda rune: lit.get_name(rune, object_type='rune')
     )
     return data
@@ -366,10 +367,8 @@ def decode_shards(data: pd.DataFrame) -> pd.DataFrame:
         5001: 'Health', 5002: 'Armor', 5003: 'Magic Resist',
         5005: 'Attack Speed', 5007: 'Ability Haste', 5008: 'Adaptive Force'
     }
-    shards = data.filter(regex=r'runeShard*')
-    data[shards.columns] = data[shards.columns].applymap(
-        lambda shard: translations.get(shard)
-    )
+    shards = data.filter(regex=r'runeShard*').columns
+    data[shards] = data[shards].applymap(lambda shard: translations.get(shard))
     return data
 
 
