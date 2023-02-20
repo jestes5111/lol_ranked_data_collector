@@ -33,10 +33,11 @@ def main() -> None:
 
     data = collect_data(lol_watcher, region, match_ids, puuid)
     data = rename_shard_columns(data)
-    data = filter_and_decode_data(data)
+    data = update_data(data)
     data = sort_data(data)
 
-    save_data_to_pickle(data, summoner)
+    # save_data_to_pickle(data, summoner)
+    data.to_csv('test.csv', index=False)
 
 
 def check_user_input() -> None:
@@ -172,7 +173,7 @@ def rename_shard_columns(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def filter_and_decode_data(data: pd.DataFrame) -> pd.DataFrame:
+def update_data(data: pd.DataFrame) -> pd.DataFrame:
     """Remove unnecessary information from the data and translate id's to names.
 
     Args:
@@ -198,7 +199,7 @@ def sort_data(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
-    data = data.sort_index(axis=1)
+    data = data.sort_index(axis='columns')
     return data
 
 def save_data_to_pickle(data: pd.DataFrame, summoner: dict) -> None:
@@ -266,26 +267,18 @@ def get_runes(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The `DataFrame` with rune information appended to it.
     """
+    runes = pd.DataFrame()
     perks = pd.json_normalize(data['perks.styles'])
-    primary = pd.json_normalize(pd.json_normalize(perks[0])['selections'])
-    keystone = pd.json_normalize(primary[0])['perk']
-    primary1 = pd.json_normalize(primary[1])['perk']
-    primary2 = pd.json_normalize(primary[2])['perk']
-    primary3 = pd.json_normalize(primary[3])['perk']
-    secondary = pd.json_normalize(pd.json_normalize(perks[1])['selections'])
-    secondary1 = pd.json_normalize(secondary[0])['perk']
-    secondary2 = pd.json_normalize(secondary[1])['perk']
-
-    keystone.name = 'runeKeystone'
-    primary1.name = 'runePrimary1'
-    primary2.name = 'runePrimary2'
-    primary3.name = 'runePrimary3'
-    secondary1.name = 'runeSecondary1'
-    secondary2.name = 'runeSecondary2'
-
-    rune_list = [keystone, primary1, primary2, primary3, secondary1, secondary2]
-    runes = pd.concat(rune_list, axis=1)
-    data = pd.concat([data, runes], axis=1, join='outer')
+    for i in perks.columns:
+        tree = pd.json_normalize(pd.json_normalize(perks[i])['selections'])
+        for j in tree.columns:
+            rune = pd.json_normalize(tree[j])['perk']
+            runes = pd.concat([runes, rune], axis='columns')
+    runes.columns =  [
+        'runeKeystone', 'runePrimary1', 'runePrimary2', 'runePrimary3', 
+        'runeSecondary1', 'runeSecondary2'
+    ]
+    data = pd.concat([data, runes], axis='columns', join='outer')
     return data
 
 
@@ -307,7 +300,7 @@ def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
 
     regexes = ['.*challenge*', '.*Ping*', '.*riot*', '.*nexus*', '.*gameEnded*']
     for regex in regexes:
-        data = data.drop(data.filter(regex=regex).columns, axis=1)
+        data = data.drop(data.filter(regex=regex).columns, axis='columns')
 
     return data
 
