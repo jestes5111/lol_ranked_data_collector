@@ -11,6 +11,7 @@ Typical usage example:
 
 import sys
 import time
+
 import pandas as pd
 import lol_id_tools as lit
 from riotwatcher import LolWatcher, ApiError
