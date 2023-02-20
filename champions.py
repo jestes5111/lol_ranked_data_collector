@@ -1,7 +1,6 @@
 """temp"""
 
 import sys
-import json
 import pandas as pd
 import lol_id_tools as lit
 from riotwatcher import LolWatcher, ApiError
@@ -21,11 +20,18 @@ def main():
 
     data = collect_data(lol_watcher, region, match_ids, puuid)
     data = filter_and_decode_data(data)
+    new_names = {
+        'perks.statPerks.defense': 'runeShardDefense',
+        'perks.statPerks.flex': 'runeShardFlex',
+        'perks.statPerks.offense': 'runeShardOffense',
+    }
+    data = data.rename(columns=new_names)
+    data = data.sort_index(axis=1)
 
     data.to_csv('test.csv', index=False)
 
-    # TODO: expand 'perks' column to shards (offense, flex, defense) and
-    #       runes (listed as 'primaryStyle' and 'subStyle' with 'selections')
+    # TODO: rune shards to name?
+    # TODO: rune stats?
 
 
 def get_region(region: str) -> str:
@@ -63,6 +69,7 @@ def get_summoner(watcher: LolWatcher, region: str, summoner_name: str) -> dict:
         Developer  Portal, it is returned as a `SummonerDTO`, but is converted
         to a dict by `riotwatcher`.
     """
+    #summoner = {}
     try:
         summoner = watcher.summoner.by_name(region, summoner_name)
     except ApiError as error:
@@ -127,9 +134,7 @@ def collect_data(
         player_index = get_player_index(puuid, match)
         player = get_player_from_index(match, player_index)
         player_data = pd.json_normalize(player)
-        #player_data = pd.DataFrame([player])
         data = pd.concat([data, player_data], ignore_index=True)
-        #data = get_runes(data)
 
     return data
 
@@ -143,10 +148,12 @@ def filter_and_decode_data(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
-    pd.json_normalize(data['perks.styles'])
+    # pd.json_normalize(data['perks.styles'])
+    data = get_runes(data)
     data = remove_unnecessary_info(data)
     data = decode_items(data)
     data = decode_summoner_spells(data)
+    data = decode_runes(data)
     return data
 
 
@@ -196,15 +203,33 @@ def get_player_from_index(match: dict, index: int) -> dict:
 
 def get_runes(data: pd.DataFrame) -> pd.DataFrame:
     """Gets the runes used by the player in an individual match.
-    
+
     Args:
-        data: 
+        data: The `DataFrame` containing the collected player data.
+    
+    Returns:
+        The `DataFrame` with rune information appended to it.
     """
     perks = pd.json_normalize(data['perks.styles'])
-    primary = pd.json_normalize(perks[0])['selections']
-    # TODO: go from here
+    primary = pd.json_normalize(pd.json_normalize(perks[0])['selections'])
+    keystone = pd.json_normalize(primary[0])['perk']
+    primary1 = pd.json_normalize(primary[1])['perk']
+    primary2 = pd.json_normalize(primary[2])['perk']
+    primary3 = pd.json_normalize(primary[3])['perk']
+    secondary = pd.json_normalize(pd.json_normalize(perks[1])['selections'])
+    secondary1 = pd.json_normalize(secondary[0])['perk']
+    secondary2 = pd.json_normalize(secondary[1])['perk']
 
-    secondary = pd.json_normalize(perks[1])['selections']
+    keystone.name = 'runeKeystone'
+    primary1.name = 'runePrimary1'
+    primary2.name = 'runePrimary2'
+    primary3.name = 'runePrimary3'
+    secondary1.name = 'runeSecondary1'
+    secondary2.name = 'runeSecondary2'
+    rune_list = [keystone, primary1, primary2, primary3, secondary1, secondary2]
+    runes = pd.concat(rune_list, axis=1)
+    data = pd.concat([data, runes], axis=1, join='outer')
+    return data
 
 
 def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
@@ -217,7 +242,7 @@ def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
         The data with unnecessary information removed.    
     """
     data = data.drop(columns=[
-        'unrealKills', 'totalUnitsHealed', 'summonerId',
+        'perks.styles', 'unrealKills', 'totalUnitsHealed', 'summonerId',
         'summonerLevel', 'summonerName', 'role', 'puuid', 'profileIcon',
         'largestCriticalStrike', 'lane', 'itemsPurchased', 'individualPosition',
         'goldSpent', 'eligibleForProgression', 'championTransform', 'championId'
@@ -252,6 +277,7 @@ def decode_items(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
+    # TODO: fill empty items with 0
     items = data.filter(regex=r'item\d')
     data[items.columns] = data[items.columns].applymap(
         lambda item: lit.get_name(item, object_type='item')
@@ -271,6 +297,22 @@ def decode_summoner_spells(data: pd.DataFrame) -> pd.DataFrame:
     summoner_spells = data.filter(regex=r'summoner([1-2])Id')
     data[summoner_spells.columns] = data[summoner_spells.columns].applymap(
         lambda spell: lit.get_name(spell, object_type='summoner_spell')
+    )
+    return data
+
+
+def decode_runes(data: pd.DataFrame) -> pd.DataFrame:
+    """Translates the id's of every rune to its name.
+
+    Args:
+        data: The `DataFrame` of player stats.
+
+    Returns:
+        The updated `DataFrame`.
+    """
+    runes = data.filter(regex=r'rune*')
+    data[runes.columns] = data[runes.columns].applymap(
+        lambda rune: lit.get_name(rune, object_type='rune')
     )
     return data
 
