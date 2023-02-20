@@ -1,6 +1,16 @@
-"""temp"""
+"""Uses Riot's API to gather a player's data from their last 20 ranked games.
+
+Accesses the Riot API using the `LolWatcher` class to find a specific player
+using their `puuid` and their 20 most recent matches using `matchId`s. This
+information is then parsed, filtered, renamed, and reorganized as necessary to
+create easy-to-read data, which is then dumped into a 
+
+Typical usage example:
+    python collect_ranked_stats.py NA1 Zenîth
+"""
 
 import sys
+import time
 import pandas as pd
 import lol_id_tools as lit
 from riotwatcher import LolWatcher, ApiError
@@ -10,34 +20,32 @@ from riotwatcher import LolWatcher, ApiError
 import constants
 
 
-def main():
-    """temp"""
+def main() -> None:
+    """Collects and processes the required data, then writes it to a file."""
+    check_user_input()
+
     lol_watcher = LolWatcher(constants.RIOT_API_KEY)
-    region = get_region('NA1')
-    summoner = get_summoner(lol_watcher, region, 'Zenîth')
-    puuid = summoner['puuid']
+    region = get_region(sys.argv[1])
+    summoner = get_summoner(lol_watcher, region, sys.argv[2])
+    puuid = get_puuid(summoner)
     match_ids = get_last_20_match_ids(lol_watcher, region, puuid)
 
     data = collect_data(lol_watcher, region, match_ids, puuid)
+    data = rename_shard_columns(data)
     data = filter_and_decode_data(data)
+    data = sort_data(data)
 
-    # TODO: move to new function
-    new_names = {
-        'perks.statPerks.defense': 'runeShardDefense',
-        'perks.statPerks.flex': 'runeShardFlex',
-        'perks.statPerks.offense': 'runeShardOffense',
-    }
-    data = data.rename(columns=new_names)
+    save_data_to_pickle(data, summoner)
 
-    data = data.sort_index(axis=1)
 
-    data.to_csv('test.csv', index=False)
-
-    # TODO: rune shards to name?
-    # TODO: rune stats?
-    # TODO: summoner name and region as CLI args
-    # TODO: update `main` and module docstrings
-    # TODO: move to new file once all these have been completed
+def check_user_input() -> None:
+    """Checks the user's input to make sure the format is correct."""
+    if len(sys.argv) != 3:
+        print('Incorrect number of arguments were provided.\n')
+        print('Run the program again with the following arguments:')
+        print('python collect_ranked_stats.py {region name} {summoner name}\n')
+        print('Example: python collect_ranked_stats.py NA1 Zenîth')
+        sys.exit(2)
 
 
 def get_region(region: str) -> str:
@@ -75,7 +83,6 @@ def get_summoner(watcher: LolWatcher, region: str, summoner_name: str) -> dict:
         Developer  Portal, it is returned as a `SummonerDTO`, but is converted
         to a dict by `riotwatcher`.
     """
-    #summoner = {}
     try:
         summoner = watcher.summoner.by_name(region, summoner_name)
     except ApiError as error:
@@ -142,6 +149,25 @@ def collect_data(
         player_data = pd.json_normalize(player)
         data = pd.concat([data, player_data], ignore_index=True)
 
+    data = get_runes(data)
+    return data
+
+
+def rename_shard_columns(data: pd.DataFrame) -> pd.DataFrame:
+    """Renames the `statPerks` columns using an easy-to-read convention.
+    
+    Args:
+        data: The `DataFrame` to update.
+
+    Returns:
+        The updated `DataFrame`.
+    """
+    new_names = {
+        'perks.statPerks.defense': 'runeShardDefense',
+        'perks.statPerks.flex': 'runeShardFlex',
+        'perks.statPerks.offense': 'runeShardOffense',
+    }
+    data = data.rename(columns=new_names)
     return data
 
 
@@ -154,13 +180,36 @@ def filter_and_decode_data(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
-    # pd.json_normalize(data['perks.styles'])
-    data = get_runes(data)
     data = remove_unnecessary_info(data)
     data = decode_items(data)
     data = decode_summoner_spells(data)
     data = decode_runes(data)
+    data = decode_shards(data)
     return data
+
+
+def sort_data(data: pd.DataFrame) -> pd.DataFrame:
+    """Sorts the given data by column name.
+    
+    Args:
+        data: The `DataFrame` to update.
+
+    Returns:
+        The updated `DataFrame`.
+    """
+    data = data.sort_index(axis=1)
+    return data
+
+def save_data_to_pickle(data: pd.DataFrame, summoner: dict) -> None:
+    """Saves `data` in a `pickle` file.
+    
+    Args:
+        data: The `DataFrame` to save.
+        summoner: The information of the given summoner.
+    """
+    name = summoner['name']
+    time_str = time.strftime("%Y%m%d-%H%M%S")
+    data.to_pickle(f'{name}_ranked_stats_{time_str}.pickle')
 
 
 def get_match_from_id(
@@ -271,7 +320,8 @@ def filter_data(data: pd.DataFrame, regex: str) -> pd.DataFrame:
     Returns:
         The given `DataFrame` with the desired column(s) removed.
     """
-    return data.drop(list(data.filter(regex=regex)), axis=1, inplace=True)
+    data = data.drop(list(data.filter(regex=regex)), axis=1)
+    return data
 
 
 def decode_items(data: pd.DataFrame) -> pd.DataFrame:
@@ -283,7 +333,6 @@ def decode_items(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
-    # TODO: fill empty items with 0
     items = data.filter(regex=r'item\d')
     data[items.columns] = data[items.columns].applymap(
         lambda item: lit.get_name(item, object_type='item')
@@ -316,9 +365,29 @@ def decode_runes(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
-    runes = data.filter(regex=r'rune*')
+    runes = data.filter(regex=r'rune((Keystone)|(Primary)|(Secondary))')
     data[runes.columns] = data[runes.columns].applymap(
         lambda rune: lit.get_name(rune, object_type='rune')
+    )
+    return data
+
+
+def decode_shards(data: pd.DataFrame) -> pd.DataFrame:
+    """Translates the id's of every rune shard to its name.
+
+    Args:
+        data: The `DataFrame` of player stats.
+
+    Returns:
+        The updated `DataFrame`.
+    """
+    translations = {
+        5001: 'Health', 5002: 'Armor', 5003: 'Magic Resist',
+        5005: 'Attack Speed', 5007: 'Ability Haste', 5008: 'Adaptive Force'
+    }
+    shards = data.filter(regex=r'runeShard*')
+    data[shards.columns] = data[shards.columns].applymap(
+        lambda shard: translations.get(shard)
     )
     return data
 
