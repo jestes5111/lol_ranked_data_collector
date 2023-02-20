@@ -20,18 +20,24 @@ def main():
 
     data = collect_data(lol_watcher, region, match_ids, puuid)
     data = filter_and_decode_data(data)
+
+    # TODO: move to new function
     new_names = {
         'perks.statPerks.defense': 'runeShardDefense',
         'perks.statPerks.flex': 'runeShardFlex',
         'perks.statPerks.offense': 'runeShardOffense',
     }
     data = data.rename(columns=new_names)
+
     data = data.sort_index(axis=1)
 
     data.to_csv('test.csv', index=False)
 
     # TODO: rune shards to name?
     # TODO: rune stats?
+    # TODO: summoner name and region as CLI args
+    # TODO: update `main` and module docstrings
+    # TODO: move to new file once all these have been completed
 
 
 def get_region(region: str) -> str:
