@@ -33,11 +33,10 @@ def main() -> None:
 
     data = collect_data(lol_watcher, region, match_ids, puuid)
     data = rename_shard_columns(data)
-    data = update_data(data)
+    data = clean_data(data)
     data = sort_data(data)
 
-    # save_data_to_pickle(data, summoner)
-    data.to_csv('test.csv', index=False)
+    save_data_to_pickle(data, summoner)
 
 
 def check_user_input() -> None:
@@ -157,7 +156,7 @@ def collect_data(
 
 def rename_shard_columns(data: pd.DataFrame) -> pd.DataFrame:
     """Renames the `statPerks` columns using an easy-to-read convention.
-    
+
     Args:
         data: The `DataFrame` to update.
 
@@ -173,7 +172,7 @@ def rename_shard_columns(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def update_data(data: pd.DataFrame) -> pd.DataFrame:
+def clean_data(data: pd.DataFrame) -> pd.DataFrame:
     """Remove unnecessary information from the data and translate id's to names.
 
     Args:
@@ -187,12 +186,13 @@ def update_data(data: pd.DataFrame) -> pd.DataFrame:
     data = decode_summoner_spells(data)
     data = decode_runes(data)
     data = decode_shards(data)
+    data = decode_teams(data)
     return data
 
 
 def sort_data(data: pd.DataFrame) -> pd.DataFrame:
     """Sorts the given data by column name.
-    
+
     Args:
         data: The `DataFrame` to update.
 
@@ -202,9 +202,10 @@ def sort_data(data: pd.DataFrame) -> pd.DataFrame:
     data = data.sort_index(axis='columns')
     return data
 
+
 def save_data_to_pickle(data: pd.DataFrame, summoner: dict) -> None:
     """Saves `data` in a `pickle` file.
-    
+
     Args:
         data: The `DataFrame` to save.
         summoner: The information of the given summoner.
@@ -263,7 +264,7 @@ def get_runes(data: pd.DataFrame) -> pd.DataFrame:
 
     Args:
         data: The `DataFrame` containing the collected player data.
-    
+
     Returns:
         The `DataFrame` with rune information appended to it.
     """
@@ -275,8 +276,8 @@ def get_runes(data: pd.DataFrame) -> pd.DataFrame:
             rune = pd.json_normalize(tree[j])['perk']
             runes = pd.concat([runes, rune], axis='columns')
 
-    runes.columns =  [
-        'runeKeystone', 'runePrimary1', 'runePrimary2', 'runePrimary3', 
+    runes.columns = [
+        'runeKeystone', 'runePrimary1', 'runePrimary2', 'runePrimary3',
         'runeSecondary1', 'runeSecondary2'
     ]
     data = pd.concat([data, runes], axis='columns', join='outer')
@@ -293,14 +294,16 @@ def remove_unnecessary_info(data: pd.DataFrame) -> pd.DataFrame:
         The data with unnecessary information removed.    
     """
     columns = [
-        'perks.styles', 'unrealKills', 'totalUnitsHealed', 'summonerId',
-        'summonerLevel', 'summonerName', 'role', 'puuid', 'profileIcon',
-        'largestCriticalStrike', 'lane', 'itemsPurchased', 'individualPosition',
-        'goldSpent', 'eligibleForProgression', 'championTransform', 'championId'
+        'championId', 'championTransform', 'eligibleForProgression',
+        'goldSpent', 'individualPosition', 'itemsPurchased', 'lane',
+        'largestCriticalStrike', 'perks.styles', 'profileIcon', 'puuid', 'role',
+        'sightWardsBoughtInGame', 'summonerId', 'summonerLevel', 'summonerName',
+        'totalUnitsHealed', 'unrealKills'
     ]
     data = data.drop(columns=columns)
 
-    regexes = ['.*challenge*', '.*Ping*', '.*riot*', '.*nexus*', '.*gameEnded*']
+    regexes = ['.*challenge*', '.*Ping*',
+               '.*riot*', '.*nexus*', '.*gameEnded*']
     for regex in regexes:
         data = data.drop(data.filter(regex=regex).columns, axis='columns')
     return data
@@ -369,6 +372,20 @@ def decode_shards(data: pd.DataFrame) -> pd.DataFrame:
     }
     shards = data.filter(regex=r'runeShard*').columns
     data[shards] = data[shards].applymap(lambda shard: translations.get(shard))
+    return data
+
+
+def decode_teams(data: pd.DataFrame) -> pd.DataFrame:
+    """Translates the id's of every team to its name.
+
+    Args:
+        data: The `DataFrame` of player stats.
+
+    Returns:
+        The updated `DataFrame`.
+    """
+    translations = {100: 'BLUE', 200: 'RED'}
+    data['teamId'] = data['teamId'].map(translations.get)
     return data
 
 
