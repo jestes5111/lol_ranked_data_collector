@@ -32,7 +32,6 @@ def main() -> None:
     match_ids = get_last_20_match_ids(lol_watcher, region, puuid)
 
     data = collect_data(lol_watcher, region, match_ids, puuid)
-    data = rename_shard_columns(data)
     data = clean_data(data)
     data = sort_data(data)
 
@@ -154,24 +153,6 @@ def collect_data(
     return data
 
 
-def rename_shard_columns(data: pd.DataFrame) -> pd.DataFrame:
-    """Renames the `statPerks` columns using an easy-to-read convention.
-
-    Args:
-        data: The `DataFrame` to update.
-
-    Returns:
-        The updated `DataFrame`.
-    """
-    new_names = {
-        'perks.statPerks.defense': 'runeShardDefense',
-        'perks.statPerks.flex': 'runeShardFlex',
-        'perks.statPerks.offense': 'runeShardOffense',
-    }
-    data = data.rename(columns=new_names)
-    return data
-
-
 def clean_data(data: pd.DataFrame) -> pd.DataFrame:
     """Remove unnecessary information from the data and translate id's to names.
 
@@ -181,6 +162,7 @@ def clean_data(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The updated `DataFrame`.
     """
+    data = rename_shard_columns(data)
     data = remove_unnecessary_info(data)
     data = decode_items(data)
     data = decode_summoner_spells(data)
@@ -281,6 +263,24 @@ def get_runes(data: pd.DataFrame) -> pd.DataFrame:
         'runeSecondary1', 'runeSecondary2'
     ]
     data = pd.concat([data, runes], axis='columns', join='outer')
+    return data
+
+
+def rename_shard_columns(data: pd.DataFrame) -> pd.DataFrame:
+    """Renames the `statPerks` columns using an easy-to-read convention.
+
+    Args:
+        data: The `DataFrame` to update.
+
+    Returns:
+        The updated `DataFrame`.
+    """
+    new_names = {
+        'perks.statPerks.defense': 'runeShardDefense',
+        'perks.statPerks.flex': 'runeShardFlex',
+        'perks.statPerks.offense': 'runeShardOffense',
+    }
+    data = data.rename(columns=new_names)
     return data
 
 
